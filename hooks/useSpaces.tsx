@@ -9,18 +9,23 @@ import { useUser } from './useUser';
 
 type IContext = {
   spaces: Space[];
+  setSpace: (spaces: Space) => void;
   setSpaces: (spaces: Space[]) => void;
   isLoaded: boolean;
-  createNewSpace: (data: Prisma.SpaceCreateInput) => Promise<void>;
+  createNewSpace: (data: Prisma.SpaceCreateInput) => Promise<Space | null>;
   isCreatingSpace: boolean;
 };
 
 export const SpacesContext = createContext<Readonly<IContext>>({
-  spaces: [], setSpaces: () => undefined, isLoaded: false, createNewSpace: () => Promise.resolve(), isCreatingSpace: false
+  spaces: [],
+  setSpace: () => undefined,
+  setSpaces: () => undefined,
+  isLoaded: false,
+  createNewSpace: () => Promise.resolve(null),
+  isCreatingSpace: false
 });
 
-export function SpacesProvider ({ children }: { children: ReactNode }) {
-
+export function SpacesProvider({ children }: { children: ReactNode }) {
   const { user, isLoaded: isUserLoaded, setUser } = useUser();
   const [spaces, setSpaces] = useState<Space[]>([]);
   const [isLoaded, setIsLoaded] = useState(false);
@@ -30,14 +35,14 @@ export function SpacesProvider ({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (user && router.route !== '/share/[...pageId]') {
       setIsLoaded(false);
-      charmClient.getSpaces()
-        .then(_spaces => {
+      charmClient
+        .getSpaces()
+        .then((_spaces) => {
           setSpaces(_spaces);
-          setIsLoaded(true);
         })
-        .catch(err => {});
-    }
-    else if (isUserLoaded) {
+        .catch((err) => {})
+        .finally(() => setIsLoaded(true));
+    } else if (isUserLoaded) {
       setIsLoaded(true);
     }
   }, [user?.id, isUserLoaded]);
@@ -56,20 +61,36 @@ export function SpacesProvider ({ children }: { children: ReactNode }) {
         router.push(`/${space.domain}`);
         setIsCreatingSpace(false);
       }, 200);
-    }
-    catch (e) {
+      return space;
+    } catch (e) {
       setIsCreatingSpace(false);
     }
 
+    return null;
   }, []);
 
-  const value = useMemo(() => ({ spaces, setSpaces, isLoaded, createNewSpace, isCreatingSpace }) as IContext, [spaces, isLoaded, isCreatingSpace]);
-
-  return (
-    <SpacesContext.Provider value={value}>
-      {children}
-    </SpacesContext.Provider>
+  const setSpace = useCallback(
+    (_space: Space) => {
+      const newSpaces = spaces.map((s) => (s.id === _space.id ? _space : s));
+      setSpaces(newSpaces);
+    },
+    [spaces, setSpaces]
   );
+
+  const value = useMemo(
+    () =>
+      ({
+        spaces,
+        setSpace,
+        setSpaces,
+        isLoaded,
+        createNewSpace,
+        isCreatingSpace
+      } as IContext),
+    [spaces, isLoaded, isCreatingSpace]
+  );
+
+  return <SpacesContext.Provider value={value}>{children}</SpacesContext.Provider>;
 }
 
 export const useSpaces = () => useContext(SpacesContext);

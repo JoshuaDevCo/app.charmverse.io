@@ -1,6 +1,7 @@
 import { ArrowDropDown } from '@mui/icons-material';
 import { ListItemIcon, ListItemText, Menu, MenuItem, Tooltip } from '@mui/material';
 import PopupState, { bindMenu, bindTrigger } from 'material-ui-popup-state';
+import { memo } from 'react';
 
 import Button from 'components/common/Button';
 import { usePrimaryCharmEditor, EDIT_MODE_CONFIG } from 'hooks/usePrimaryCharmEditor';
@@ -21,11 +22,10 @@ const editModeConfig = {
   }
 } as const;
 
-export default function EditModeToggle () {
-
+function EditModeToggle() {
   const { availableEditModes, editMode, setPageProps } = usePrimaryCharmEditor();
 
-  function setMode (mode: EditMode) {
+  function setMode(mode: EditMode) {
     setPageProps({ editMode: mode });
   }
 
@@ -70,9 +70,7 @@ export default function EditModeToggle () {
                 <ListItemIcon sx={{ color: editMode === mode ? `${editModeConfig[mode].color}.main` : '' }}>
                   {EDIT_MODE_CONFIG[mode].icon}
                 </ListItemIcon>
-                <ListItemText>
-                  {label}
-                </ListItemText>
+                <ListItemText>{label}</ListItemText>
               </MenuItem>
             ))}
           </Menu>
@@ -81,3 +79,5 @@ export default function EditModeToggle () {
     </PopupState>
   );
 }
+
+export default memo(EditModeToggle);

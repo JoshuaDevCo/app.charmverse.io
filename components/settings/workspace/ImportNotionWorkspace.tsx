@@ -13,10 +13,11 @@ import { initialLoad } from 'components/common/BoardEditor/focalboard/src/store/
 import Button from 'components/common/Button';
 import Modal from 'components/common/Modal';
 import { useCurrentSpace } from 'hooks/useCurrentSpace';
+import useIsAdmin from 'hooks/useIsAdmin';
 import { useSnackbar } from 'hooks/useSnackbar';
-import { deleteCookie, getCookie } from 'lib/browser';
 import { AUTH_CODE_COOKIE, AUTH_ERROR_COOKIE } from 'lib/notion/constants';
 import type { FailedImportsError } from 'lib/notion/types';
+import { deleteCookie, getCookie } from 'lib/utilities/browser';
 import NotionIcon from 'public/images/notion_logo.svg';
 
 interface NotionResponseState {
@@ -26,12 +27,13 @@ interface NotionResponseState {
   failedImports?: FailedImportsError[];
 }
 
-export default function ImportNotionWorkspace () {
+export default function ImportNotionWorkspace() {
   const [notionState, setNotionState] = useState<NotionResponseState>({ loading: false });
   const { showMessage } = useSnackbar();
   const [modalOpen, setModalOpen] = useState(false);
   const { mutate } = useSWRConfig();
-  const [space] = useCurrentSpace();
+  const space = useCurrentSpace();
+  const isAdmin = useIsAdmin();
   const dispatch = useAppDispatch();
 
   const notionCode = getCookie(AUTH_CODE_COOKIE);
@@ -42,10 +44,11 @@ export default function ImportNotionWorkspace () {
       setNotionState({ failedImports: [], loading: true });
       setModalOpen(true);
       deleteCookie(AUTH_CODE_COOKIE);
-      charmClient.importFromNotion({
-        code: notionCode,
-        spaceId: space.id
-      })
+      charmClient
+        .importFromNotion({
+          code: notionCode,
+          spaceId: space.id
+        })
         .then(({ failedImports }) => {
           setNotionState({ failedImports, loading: false });
           mutate(`pages/${space.id}`);
@@ -61,10 +64,10 @@ export default function ImportNotionWorkspace () {
           if (err.status === 504) {
             setNotionState({
               loading: false,
-              warning: 'It can take up to an hour to import large Notion spaces. Your data will appear on the left navigation when the import is completed.'
+              warning:
+                'It can take up to an hour to import large Notion spaces. Your data will appear on the left navigation when the import is completed.'
             });
-          }
-          else {
+          } else {
             setNotionState({
               loading: false,
               error: err.message || err.error || 'Something went wrong. Please try again'
@@ -86,21 +89,23 @@ export default function ImportNotionWorkspace () {
     }
   }, []);
 
-  function closeModal () {
+  function closeModal() {
     setModalOpen(false);
   }
 
   return (
     <div>
       <Button
+        disabled={!isAdmin}
+        disabledTooltip='Only admins can import content from Notion'
         loading={notionState.loading}
         href={`/api/notion/login?redirect=${encodeURIComponent(window.location.href.split('?')[0])}`}
         variant='outlined'
-        startIcon={(
+        startIcon={
           <SvgIcon sx={{ color: 'text.primary' }}>
             <NotionIcon />
           </SvgIcon>
-        )}
+        }
       >
         {notionState.loading ? 'Importing pages from Notion' : 'Import pages from Notion'}
       </Button>
@@ -109,9 +114,7 @@ export default function ImportNotionWorkspace () {
           {notionState.loading && (
             <>
               <CircularProgress size={30} />
-              <Typography sx={{ mb: 0 }}>
-                Importing your files from Notion. This might take a few minutes...
-              </Typography>
+              <Typography sx={{ mb: 0 }}>Importing your files from Notion. This might take a few minutes...</Typography>
             </>
           )}
           {!notionState.loading && notionState.failedImports?.length && (
@@ -141,16 +144,20 @@ export default function ImportNotionWorkspace () {
         </Box>
         {notionState.failedImports && notionState.failedImports?.length > 0 && (
           <Alert severity='warning' sx={{ mt: 2 }}>
-            <Box sx={{
-              display: 'flex', gap: 2, flexDirection: 'column'
-            }}
+            <Box
+              sx={{
+                display: 'flex',
+                gap: 2,
+                flexDirection: 'column'
+              }}
             >
-              {notionState.failedImports.map(failedImport => (
-                <div>
-                  <Box sx={{
-                    display: 'flex',
-                    gap: 1
-                  }}
+              {notionState.failedImports.map((failedImport) => (
+                <div key={failedImport.pageId}>
+                  <Box
+                    sx={{
+                      display: 'flex',
+                      gap: 1
+                    }}
                   >
                     <span>Type: {failedImport.type}</span>
                     <span>Title: {failedImport.title}</span>
@@ -160,8 +167,10 @@ export default function ImportNotionWorkspace () {
                     <div>
                       Blocks that failed to import for the page
                       {failedImport.blocks.map((blockTrails, blockTrailsIndex) => (
-                        <div>
-                          {blockTrailsIndex + 1}. {blockTrails.map(([blockType, blockIndex]) => `${blockType}(${blockIndex + 1})`).join(' -> ')}
+                        // eslint-disable-next-line react/no-array-index-key
+                        <div key={blockTrailsIndex}>
+                          {blockTrailsIndex + 1}.{' '}
+                          {blockTrails.map(([blockType, blockIndex]) => `${blockType}(${blockIndex + 1})`).join(' -> ')}
                         </div>
                       ))}
                     </div>

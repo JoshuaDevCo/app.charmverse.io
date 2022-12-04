@@ -10,9 +10,8 @@ import { AdministratorOnlyError, UserIsNotSpaceMemberError } from '../users/erro
 /**
  * Allow an endpoint to be consumed if it originates from a share page
  */
-export function requireSpaceMembership (options: { adminOnly: boolean, spaceIdKey?: string } = { adminOnly: false }) {
+export function requireSpaceMembership(options: { adminOnly: boolean; spaceIdKey?: string } = { adminOnly: false }) {
   return async (req: NextApiRequest, res: NextApiResponse<ISystemError>, next: NextHandler) => {
-
     // Where to find the space ID
     const spaceIdKey = options.spaceIdKey ?? 'spaceId';
 
@@ -23,13 +22,13 @@ export function requireSpaceMembership (options: { adminOnly: boolean, spaceIdKe
       });
     }
 
-    const querySpaceId = req.query?.[spaceIdKey] as string;
+    const querySpaceId = req.query?.[spaceIdKey];
 
-    const bodySpaceId = req.body?.[spaceIdKey] as string;
+    const bodySpaceId = req.body?.[spaceIdKey];
 
     const spaceId = querySpaceId ?? bodySpaceId;
 
-    if (!spaceId) {
+    if (typeof spaceId !== 'string' || spaceId === '') {
       throw new ApiError({
         message: 'Please provide a space Id',
         errorType: 'Invalid input'
@@ -46,7 +45,7 @@ export function requireSpaceMembership (options: { adminOnly: boolean, spaceIdKe
     const spaceRole = await prisma.spaceRole.findFirst({
       where: {
         userId: req.session.user.id,
-        spaceId: spaceId as string
+        spaceId
       }
     });
 
@@ -56,9 +55,7 @@ export function requireSpaceMembership (options: { adminOnly: boolean, spaceIdKe
 
     if (options.adminOnly && spaceRole.isAdmin !== true) {
       throw new AdministratorOnlyError();
-    }
-
-    else {
+    } else {
       next();
     }
   };

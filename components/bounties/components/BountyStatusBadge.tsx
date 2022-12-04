@@ -19,11 +19,11 @@ import type { ReactNode } from 'react';
 import TokenLogo from 'components/common/TokenLogo';
 import { useCurrentSpace } from 'hooks/useCurrentSpace';
 import { usePaymentMethods } from 'hooks/usePaymentMethods';
+import type { BountyTaskAction } from 'lib/bounties/getBountyTasks';
 import { getTokenAndChainInfoFromPayments } from 'lib/tokens/tokenData';
-import { nanofy } from 'lib/utilities/numbers';
 import type { BrandColor } from 'theme/colors';
 
-const BOUNTY_LABELS: Record<BountyStatus, string> = {
+export const BOUNTY_STATUS_LABELS: Record<BountyStatus, string> = {
   suggestion: 'Suggestion',
   open: 'Open',
   inProgress: 'In Progress',
@@ -31,7 +31,7 @@ const BOUNTY_LABELS: Record<BountyStatus, string> = {
   paid: 'Paid'
 };
 
-const BOUNTY_STATUS_ICONS : Record<BountyStatus, ReactNode> = {
+export const BOUNTY_STATUS_ICONS: Record<BountyStatus, ReactNode> = {
   suggestion: <LightbulbIcon />,
   open: <ModeStandbyIcon />,
   inProgress: <AssignmentIndIcon />,
@@ -39,7 +39,29 @@ const BOUNTY_STATUS_ICONS : Record<BountyStatus, ReactNode> = {
   paid: <PaidIcon />
 };
 
-export const BountyStatusColors: Record<BountyStatus, BrandColor> = {
+const BOUNTY_ACTION_LABELS: Record<BountyTaskAction, string> = {
+  application_pending: 'Application pending',
+  application_approved: 'Application approved',
+  application_rejected: 'Application rejected',
+  work_submitted: 'Work submitted',
+  work_approved: 'Work approved',
+  payment_needed: 'Payment needed',
+  payment_complete: 'Payment complete',
+  suggested_bounty: 'Suggested bounty'
+};
+
+const BOUNTY_ACTION_ICONS: Record<BountyTaskAction, ReactNode> = {
+  application_pending: <ModeStandbyIcon />,
+  application_approved: <CheckCircleOutlineIcon />,
+  application_rejected: <ModeStandbyIcon />,
+  work_submitted: <CheckCircleOutlineIcon />,
+  work_approved: <CheckCircleOutlineIcon />,
+  payment_needed: <PaidIcon />,
+  payment_complete: <PaidIcon />,
+  suggested_bounty: <LightbulbIcon />
+};
+
+export const BOUNTY_STATUS_COLORS: Record<BountyStatus, BrandColor> = {
   suggestion: 'purple',
   open: 'teal',
   inProgress: 'yellow',
@@ -47,10 +69,31 @@ export const BountyStatusColors: Record<BountyStatus, BrandColor> = {
   paid: 'gray'
 };
 
-const StyledBountyStatusChip = styled(Chip)<{ status: BountyStatus }>`
+export const BOUNTY_ACTION_COLORS: Record<BountyTaskAction, BrandColor> = {
+  application_pending: 'teal',
+  application_approved: 'teal',
+  application_rejected: 'red',
+  work_submitted: 'yellow',
+  work_approved: 'yellow',
+  payment_needed: 'pink',
+  payment_complete: 'gray',
+  suggested_bounty: 'purple'
+};
+
+const isBountyStatus = (status: BountyStatus | BountyTaskAction): status is BountyStatus =>
+  status in BOUNTY_STATUS_LABELS;
+const isBountyAction = (status: BountyStatus | BountyTaskAction): status is BountyTaskAction =>
+  status in BOUNTY_ACTION_LABELS;
+
+const StyledBountyStatusChip = styled(Chip)<{ status: BountyStatus | BountyTaskAction }>`
   background-color: ${({ status, theme }) => {
-    // @ts-ignore
-    return theme.palette[BountyStatusColors[status]].main;
+    if (isBountyStatus(status)) {
+      return theme.palette[BOUNTY_STATUS_COLORS[status]].main;
+    } else if (isBountyAction(status)) {
+      return theme.palette[BOUNTY_ACTION_COLORS[status]].main;
+    } else {
+      return 'initial';
+    }
   }};
   .MuiChip-icon {
     display: flex;
@@ -74,23 +117,43 @@ export interface IBountyBadgeProps {
   hideStatus?: boolean;
 }
 
-export function BountyStatusChip ({
-  status,
-  size = 'small'
-}: { size?: ChipProps['size'], status: BountyStatus }) {
+export function BountyStatusChip({ status, size = 'small' }: { size?: ChipProps['size']; status: BountyStatus }) {
   return (
     <StyledBountyStatusChip
       size={size}
       status={status}
-      label={BOUNTY_LABELS[status]}
+      label={BOUNTY_STATUS_LABELS[status]}
       variant='filled'
       icon={<span>{BOUNTY_STATUS_ICONS[status]}</span>}
     />
   );
 }
 
-export default function BountyStatusBadgeWrapper ({ truncate = false, hideStatus, bounty, layout = 'row' } : IBountyBadgeProps) {
-  const [space] = useCurrentSpace();
+export function BountyStatusNexusChip({
+  action,
+  size = 'small'
+}: {
+  size?: ChipProps['size'];
+  action: BountyTaskAction;
+}) {
+  return (
+    <StyledBountyStatusChip
+      size={size}
+      status={action}
+      label={BOUNTY_ACTION_LABELS[action]}
+      variant='filled'
+      icon={<span>{BOUNTY_ACTION_ICONS[action]}</span>}
+    />
+  );
+}
+
+export default function BountyStatusBadgeWrapper({
+  truncate = false,
+  hideStatus,
+  bounty,
+  layout = 'row'
+}: IBountyBadgeProps) {
+  const space = useCurrentSpace();
 
   const bountyLink = `/${space?.domain}/bounties/${bounty.id}`;
 
@@ -98,15 +161,16 @@ export default function BountyStatusBadgeWrapper ({ truncate = false, hideStatus
     return (
       <Grid container direction='column' alignItems='center'>
         <Grid item xs width='100%'>
-          <Box sx={{
-            display: 'flex',
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            width: '100%',
-            justifyContent: 'space-between',
-            gap: 1,
-            alignItems: 'center'
-          }}
+          <Box
+            sx={{
+              display: 'flex',
+              flexDirection: 'row',
+              flexWrap: 'wrap',
+              width: '100%',
+              justifyContent: 'space-between',
+              gap: 1,
+              alignItems: 'center'
+            }}
           >
             <BountyAmount bounty={bounty} truncate={truncate} />
             {!hideStatus && <BountyStatusChip status={bounty.status} />}
@@ -114,8 +178,7 @@ export default function BountyStatusBadgeWrapper ({ truncate = false, hideStatus
         </Grid>
       </Grid>
     );
-  }
-  else {
+  } else {
     return (
       <Box sx={{ textAlign: 'right' }}>
         <Box display='flex' alignItems='center' justifyContent='space-between'>
@@ -132,9 +195,15 @@ export default function BountyStatusBadgeWrapper ({ truncate = false, hideStatus
   }
 }
 
-export function BountyAmount ({ bounty, truncate = false }: { bounty: Pick<Bounty, 'rewardAmount' | 'rewardToken' | 'chainId'>, truncate?: boolean }) {
-
+export function BountyAmount({
+  bounty,
+  truncate = false
+}: {
+  bounty: Pick<Bounty, 'rewardAmount' | 'rewardToken' | 'chainId'>;
+  truncate?: boolean;
+}) {
   const [paymentMethods] = usePaymentMethods();
+
   const tokenInfo = getTokenAndChainInfoFromPayments({
     chainId: bounty.chainId,
     methods: paymentMethods,
@@ -143,54 +212,56 @@ export function BountyAmount ({ bounty, truncate = false }: { bounty: Pick<Bount
 
   const formattedAmount = Intl.NumberFormat(undefined, { maximumSignificantDigits: 3 }).format(bounty.rewardAmount);
 
-  const truncatedAmount = bounty.rewardAmount < 1 ? nanofy({ number: bounty.rewardAmount, spaceUnit: false }) : millify(bounty.rewardAmount);
+  const truncatedAmount = () => {
+    try {
+      return millify(bounty.rewardAmount, { precision: 4 });
+    } catch (error) {
+      return 'Invalid number';
+    }
+  };
 
   const tooltip = `${formattedAmount} ${tokenInfo.tokenName} (${tokenInfo.tokenSymbol})`;
 
   return (
     <Tooltip arrow placement='top' title={bounty.rewardAmount === 0 ? '' : tooltip}>
       <Box sx={{ display: 'inline-flex', alignItems: 'center', verticalAlign: 'middle' }}>
-
-        {
-            bounty.rewardAmount === 0 ? (
-              <Box sx={{ display: 'flex', verticalAlign: 'middle' }}>
-                <Typography
-                  component='span'
-                  sx={{
-                    fontWeight: 600
-                  }}
-                  mr={0.5}
-                  variant='caption'
-
-                >
-                  Reward not set
-                </Typography>
-              </Box>
-            ) : (
-              <>
-                <Box
-                  component='span'
-                  sx={{
-                    width: 25,
-                    display: 'flex',
-                    alignItems: 'center'
-                  }}
-                >
-                  <TokenLogo height={20} src={tokenInfo.canonicalLogo} />
-                </Box>
-                <Typography
-                  component='span'
-                  sx={{
-                    fontWeight: 600
-                  }}
-                  variant='h6'
-                  fontSize={18}
-                >
-                  {truncate ? truncatedAmount : bounty.rewardAmount}
-                </Typography>
-              </>
-            )
-          }
+        {bounty.rewardAmount === 0 ? (
+          <Box sx={{ display: 'flex', verticalAlign: 'middle' }}>
+            <Typography
+              component='span'
+              sx={{
+                fontWeight: 600
+              }}
+              mr={0.5}
+              variant='caption'
+            >
+              Reward not set
+            </Typography>
+          </Box>
+        ) : (
+          <>
+            <Box
+              component='span'
+              sx={{
+                width: 25,
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              <TokenLogo height={20} src={tokenInfo.canonicalLogo} />
+            </Box>
+            <Typography
+              component='span'
+              sx={{
+                fontWeight: 600
+              }}
+              variant='h6'
+              fontSize={18}
+            >
+              {truncate ? truncatedAmount() : bounty.rewardAmount}
+            </Typography>
+          </>
+        )}
       </Box>
     </Tooltip>
   );

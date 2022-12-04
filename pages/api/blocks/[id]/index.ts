@@ -1,4 +1,3 @@
-
 import type { Block } from '@prisma/client';
 import type { NextApiRequest, NextApiResponse } from 'next';
 import nc from 'next-connect';
@@ -6,14 +5,19 @@ import nc from 'next-connect';
 import { prisma } from 'db';
 import { ApiError, ActionNotPermittedError, onError, onNoMatch, requireUser } from 'lib/middleware';
 import { modifyChildPages } from 'lib/pages/modifyChildPages';
+import { resolvePageTree } from 'lib/pages/server';
 import { computeUserPagePermissions } from 'lib/permissions/pages/page-permission-compute';
 import { withSessionRoute } from 'lib/session/withSession';
+import { relay } from 'lib/websockets/relay';
 
 const handler = nc<NextApiRequest, NextApiResponse>({ onError, onNoMatch });
 
 handler.use(requireUser).delete(deleteBlock);
 
-async function deleteBlock (req: NextApiRequest, res: NextApiResponse<{ deletedCount: number, rootBlock: Block } | { error: string }>) {
+async function deleteBlock(
+  req: NextApiRequest,
+  res: NextApiResponse<{ deletedCount: number; rootBlock: Block } | { error: string }>
+) {
   const blockId = req.query.id as string;
   const userId = req.session.user.id as string;
 
@@ -32,6 +36,8 @@ async function deleteBlock (req: NextApiRequest, res: NextApiResponse<{ deletedC
     });
   }
 
+  const spaceId = rootBlock.spaceId;
+
   const isPageBlock = rootBlock.type === 'card' || rootBlock.type === 'card_template' || rootBlock.type === 'board';
 
   const permissionsSet = await computeUserPagePermissions({
@@ -40,15 +46,33 @@ async function deleteBlock (req: NextApiRequest, res: NextApiResponse<{ deletedC
   });
 
   if (rootBlock.type === 'card' || rootBlock.type === 'card_template' || rootBlock.type === 'board') {
-
     if (!permissionsSet.delete) {
       throw new ActionNotPermittedError();
     }
-    const deletedChildPageIds = await modifyChildPages(blockId, userId, 'archive');
-    deletedCount = deletedChildPageIds.length;
-  }
-  else if (rootBlock.type === 'view') {
 
+    const pageTree = await resolvePageTree({ pageId: rootBlock.id, flattenChildren: true, includeDeletedPages: true });
+
+    const deletedChildPageIds = await modifyChildPages(blockId, userId, 'archive', pageTree);
+    deletedCount = deletedChildPageIds.length;
+
+    const allPages = [pageTree.targetPage, ...pageTree.flatChildren];
+
+    relay.broadcast(
+      {
+        type: 'blocks_deleted',
+        payload: deletedChildPageIds.map((id) => ({ id, type: allPages.find((c) => c.id === id)?.type as string }))
+      },
+      spaceId
+    );
+
+    relay.broadcast(
+      {
+        type: 'pages_deleted',
+        payload: deletedChildPageIds.map((id) => ({ id }))
+      },
+      spaceId
+    );
+  } else if (rootBlock.type === 'view') {
     if (!permissionsSet.edit_content) {
       throw new ActionNotPermittedError();
     }
@@ -73,9 +97,15 @@ async function deleteBlock (req: NextApiRequest, res: NextApiResponse<{ deletedC
       }
     });
     deletedCount = 1;
-  }
-  else {
 
+    relay.broadcast(
+      {
+        type: 'blocks_deleted',
+        payload: [{ id: blockId, type: rootBlock.type }]
+      },
+      spaceId
+    );
+  } else {
     if (!permissionsSet.edit_content) {
       throw new ActionNotPermittedError();
     }
@@ -86,6 +116,14 @@ async function deleteBlock (req: NextApiRequest, res: NextApiResponse<{ deletedC
       }
     });
     deletedCount = 1;
+
+    relay.broadcast(
+      {
+        type: 'blocks_deleted',
+        payload: [{ id: blockId, type: rootBlock.type }]
+      },
+      spaceId
+    );
   }
 
   return res.status(200).json({ deletedCount, rootBlock });

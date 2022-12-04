@@ -1,37 +1,36 @@
 import type { ReactNode } from 'react';
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useMemo } from 'react';
+import type { KeyedMutator } from 'swr';
 import useSWR from 'swr';
 
 import charmClient from 'charmClient';
-import type { Member } from 'models';
+import type { Member } from 'lib/members/interfaces';
 
 import { useCurrentSpace } from './useCurrentSpace';
 
-export type { Member };
+type Context = {
+  members: Member[];
+  mutateMembers: KeyedMutator<Member[]>;
+};
 
-type Context = [users: Member[], setSpaces: (users: Member[]) => void];
+const MembersContext = createContext<Readonly<Context>>({
+  members: [],
+  mutateMembers: () => Promise.resolve(undefined)
+});
 
-const MembersContext = createContext<Readonly<Context>>([[], () => undefined]);
+export function MembersProvider({ children }: { children: ReactNode }) {
+  const space = useCurrentSpace();
 
-export function MembersProvider ({ children }: { children: ReactNode }) {
-  const [space] = useCurrentSpace();
-  const [members, setMembers] = useState<Member[]>([]);
-
-  const { data } = useSWR(() => space ? `users/${space?.id}` : null, (e) => {
-    return charmClient.getMembers(space!.id);
-  });
-
-  useEffect(() => {
-    setMembers(data || []);
-  }, [data]);
-
-  const value = useMemo(() => [members, setMembers] as Context, [members]);
-
-  return (
-    <MembersContext.Provider value={value}>
-      {children}
-    </MembersContext.Provider>
+  const { data: members, mutate: mutateMembers } = useSWR(
+    () => (space ? `members/${space?.id}` : null),
+    () => {
+      return charmClient.members.getMembers(space!.id);
+    }
   );
+
+  const value = useMemo(() => ({ members: members || [], mutateMembers } as Context), [members]);
+
+  return <MembersContext.Provider value={value}>{children}</MembersContext.Provider>;
 }
 
 export const useMembers = () => useContext(MembersContext);

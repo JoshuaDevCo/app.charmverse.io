@@ -1,12 +1,17 @@
 import HexagonalAvatarMask from 'components/common/HexagonalAvatarMask';
 import Snackbar from 'components/common/Snackbar';
-import SetAvatarPopup from 'components/profile/components/SetAvatarPopup/SetAvatarPopup';
+import { MemberOnboardingModal } from 'components/members/MemberOnboardingModal';
 
-export default function GlobalComponents () {
+import useDatadogLogger from './hooks/useDatadogLogger';
+
+export default function GlobalComponents() {
+  // Register logs to Datadog
+  useDatadogLogger();
+
   return (
     <>
       <HexagonalAvatarMask id='hexagon-avatar' />
-      <SetAvatarPopup />
+      <MemberOnboardingModal />
       <Snackbar />
     </>
   );

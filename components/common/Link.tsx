@@ -1,9 +1,8 @@
 import styled from '@emotion/styled';
-import type { Theme } from '@mui/material';
+import type { LinkProps } from '@mui/material';
 import MuiLink from '@mui/material/Link';
-import type { SxProps } from '@mui/system';
 import NextLink from 'next/link';
-import type { MouseEvent, ReactNode } from 'react';
+import type { MouseEvent } from 'react';
 
 import { usePageDialog } from 'components/common/PageDialog/hooks/usePageDialog';
 
@@ -15,45 +14,43 @@ const hoverStyle: { [key: string]: string } = {
 };
 
 const StyledMuiLink = styled(MuiLink)`
-  ${props => props.color
-    // @ts-ignore
-    ? `color: ${props.theme.palette[props.color]?.main};` : ''}
-  &:hover {
-    color: ${props => typeof props.color === 'string'
-    // @ts-ignore
-    ? (hoverStyle[props.color] || props.theme.palette[props.color]?.main) : props.theme.palette[props.color]?.main};
+  ${(props) =>
+    props.color
+      ? // @ts-ignore
+        `color: ${props.theme.palette[props.color]?.main};`
+      : ''}
+  // disable hover UX on ios which converts first click to a hover event
+  @media (pointer: fine) {
+    &:hover {
+      color: ${(props) =>
+        typeof props.color === 'string'
+          ? // @ts-ignore
+            hoverStyle[props.color] || props.theme.palette[props.color]?.main
+          : // @ts-ignore
+            props.theme.palette[props.color]?.main};
+    }
   }
 `;
 
-type Props = {
-  children: ReactNode;
-  className?: string;
-  color?: string;
-  sx?: SxProps<Theme>;
-  href: string;
+interface Props extends LinkProps {
   external?: boolean;
-  target?: string;
-  onClick?: (e: MouseEvent<HTMLAnchorElement>) => void;
-};
+}
 
-export default function Link ({ href, onClick, children, sx, className, color = 'primary', external, target }: Props) {
-
+export default function Link({ external, href, onClick, children, color = 'primary', ...restProps }: Props) {
   if (!href) {
     return <div>{children}</div>;
   }
 
-  return (
-    external ? (
-      <StyledMuiLink className={className} color={color} href={href} sx={sx} target={target} rel='noreferrer' underline='none'>
+  return external ? (
+    <StyledMuiLink href={href} color={color} rel='noreferrer' underline='none' {...restProps}>
+      {children}
+    </StyledMuiLink>
+  ) : (
+    <NextLink href={href} passHref>
+      <StyledMuiLink onClick={onClick} color={color} {...restProps}>
         {children}
       </StyledMuiLink>
-    ) : (
-      <NextLink href={href} passHref>
-        <StyledMuiLink onClick={onClick} className={className} color={color} sx={sx} target={target} underline='none'>
-          {children}
-        </StyledMuiLink>
-      </NextLink>
-    )
+    </NextLink>
   );
 }
 
@@ -63,18 +60,15 @@ interface PageLinkProps extends Props {
 }
 
 // use this link component to display a page inside a modal
-export function PageLink ({ bountyId, pageId, ...props }: PageLinkProps) {
-
+export function PageLink({ bountyId, pageId, ...props }: PageLinkProps) {
   const { showPage } = usePageDialog();
 
-  function onClickInternalLink (e: MouseEvent<HTMLAnchorElement>) {
+  function onClickInternalLink(e: MouseEvent<HTMLAnchorElement>) {
     if (bountyId || pageId) {
       showPage({ bountyId, pageId });
       e.preventDefault();
     }
   }
 
-  return (
-    <Link onClick={onClickInternalLink} {...props} />
-  );
+  return <Link onClick={onClickInternalLink} {...props} />;
 }

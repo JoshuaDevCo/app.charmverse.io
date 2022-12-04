@@ -1,7 +1,6 @@
 import type { ProposalStatus, WorkspaceEvent } from '@prisma/client';
 
 import { prisma } from 'db';
-import { isTruthy } from 'lib/utilities/types';
 
 import { getProposalAction } from './getProposalAction';
 
@@ -19,15 +18,20 @@ export interface ProposalTask {
   status: ProposalStatus;
 }
 
-type WorkspaceEventRecord = Record<string, Pick<WorkspaceEvent, 'id' | 'pageId' | 'createdAt' | 'meta'> | null>
+export interface ProposalTasksGroup {
+  marked: ProposalTask[];
+  unmarked: ProposalTask[];
+}
 
-function sortProposals (proposals: ProposalTask[]) {
+type WorkspaceEventRecord = Record<string, Pick<WorkspaceEvent, 'id' | 'pageId' | 'createdAt' | 'meta'> | null>;
+
+function sortProposals(proposals: ProposalTask[]) {
   proposals.sort((proposalA, proposalB) => {
     return proposalA.eventDate > proposalB.eventDate ? -1 : 1;
   });
 }
 
-export async function getProposalTasks (userId: string): Promise<{
+export async function getProposalTasks(userId: string): Promise<{
   marked: ProposalTask[];
   unmarked: ProposalTask[];
 }> {
@@ -83,9 +87,12 @@ export async function getProposalTasks (userId: string): Promise<{
     }
   });
 
-  const spaceIds = spaceRoles.map(spaceRole => spaceRole.spaceId);
+  const spaceIds = spaceRoles.map((spaceRole) => spaceRole.spaceId);
   // Get all the roleId assigned to this user for each space
-  const roleIds = spaceRoles.map(spaceRole => spaceRole.spaceRoleToRole).flat().map(({ role }) => role.id);
+  const roleIds = spaceRoles
+    .map((spaceRole) => spaceRole.spaceRoleToRole)
+    .flat()
+    .map(({ role }) => role.id);
 
   const pagesWithProposals = await prisma.page.findMany({
     where: {
@@ -111,9 +118,9 @@ export async function getProposalTasks (userId: string): Promise<{
     }
   });
 
-  const userNotificationIds = new Set(userNotifications.map(userNotification => userNotification.taskId));
+  const userNotificationIds = new Set(userNotifications.map((userNotification) => userNotification.taskId));
 
-  const proposalsRecord: { marked: ProposalTask[], unmarked: ProposalTask[] } = {
+  const proposalsRecord: { marked: ProposalTask[]; unmarked: ProposalTask[] } = {
     marked: [],
     unmarked: []
   };
@@ -121,18 +128,17 @@ export async function getProposalTasks (userId: string): Promise<{
   pagesWithProposals.forEach(({ proposal, ...page }) => {
     if (proposal) {
       const workspaceEvent = workspaceEventsRecord[page.id];
-      const isReviewer = proposal.reviewers.some(reviewer => reviewer.roleId ? roleIds.includes(reviewer.roleId) : reviewer.userId === userId);
-      const isAuthor = proposal.authors.some(author => author.userId === userId);
-      const action = getProposalAction(
-        {
-          currentStatus: proposal.status,
-          isAuthor,
-          isReviewer
-        }
+      const isReviewer = proposal.reviewers.some((reviewer) =>
+        reviewer.roleId ? roleIds.includes(reviewer.roleId) : reviewer.userId === userId
       );
+      const isAuthor = proposal.authors.some((author) => author.userId === userId);
+      const action = getProposalAction({
+        currentStatus: proposal.status,
+        isAuthor,
+        isReviewer
+      });
 
       if (workspaceEvent) {
-
         const proposalTask = {
           id: workspaceEvent.id,
           eventDate: workspaceEvent.createdAt,
@@ -146,8 +152,7 @@ export async function getProposalTasks (userId: string): Promise<{
         };
         if (!userNotificationIds.has(workspaceEvent.id)) {
           proposalsRecord.unmarked.push(proposalTask);
-        }
-        else {
+        } else {
           proposalsRecord.marked.push(proposalTask);
         }
       }

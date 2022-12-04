@@ -3,6 +3,7 @@ import styled from '@emotion/styled';
 import MessageOutlinedIcon from '@mui/icons-material/MessageOutlined';
 import type { BoxProps, SelectProps } from '@mui/material';
 import { Box, InputLabel, List, MenuItem, Select, Typography } from '@mui/material';
+import { useRouter } from 'next/router';
 import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 
@@ -10,9 +11,9 @@ import PageThread from 'components/common/CharmEditor/components/PageThread';
 import { usePageActionDisplay } from 'hooks/usePageActionDisplay';
 import { useThreads } from 'hooks/useThreads';
 import { useUser } from 'hooks/useUser';
-import { highlightDomElement, silentlyUpdateURL } from 'lib/browser';
-import { findTotalInlineComments } from 'lib/inline-comments/findTotalInlineComments';
+import { findTotalInlineComments } from 'lib/prosemirror/plugins/inlineComments/findTotalInlineComments';
 import type { ThreadWithCommentsAndAuthors } from 'lib/threads/interfaces';
+import { highlightDomElement, setUrlWithoutRerender } from 'lib/utilities/browser';
 import { isTruthy } from 'lib/utilities/types';
 
 const Center = styled.div`
@@ -43,7 +44,7 @@ const EmptyThreadContainerBox = styled(Box)`
   background-color: ${({ theme }) => theme.palette.background.light};
 `;
 
-function getCommentFromThreads (threads: (ThreadWithCommentsAndAuthors | undefined)[], commentId: string) {
+function getCommentFromThreads(threads: (ThreadWithCommentsAndAuthors | undefined)[], commentId: string) {
   if (!threads) {
     return null;
   }
@@ -61,14 +62,14 @@ function getCommentFromThreads (threads: (ThreadWithCommentsAndAuthors | undefin
   return null;
 }
 
-export default function CommentsSidebar ({ inline }: BoxProps & { inline?: boolean }) {
-
+export default function CommentsSidebar({ inline }: BoxProps & { inline?: boolean }) {
+  const router = useRouter();
   const { threads } = useThreads();
   const { user } = useUser();
 
   const allThreads = Object.values(threads);
-  const unResolvedThreads = allThreads.filter(thread => thread && !thread.resolved) as ThreadWithCommentsAndAuthors[];
-  const resolvedThreads = allThreads.filter(thread => thread && thread.resolved) as ThreadWithCommentsAndAuthors[];
+  const unResolvedThreads = allThreads.filter((thread) => thread && !thread.resolved) as ThreadWithCommentsAndAuthors[];
+  const resolvedThreads = allThreads.filter((thread) => thread && thread.resolved) as ThreadWithCommentsAndAuthors[];
   const [threadFilter, setThreadFilter] = useState<'resolved' | 'open' | 'all' | 'you'>('open');
   const [threadSort, setThreadSort] = useState<'earliest' | 'latest' | 'position'>('position');
   const handleThreadClassChange: SelectProps['onChange'] = (event) => {
@@ -83,43 +84,50 @@ export default function CommentsSidebar ({ inline }: BoxProps & { inline?: boole
   let threadList: ThreadWithCommentsAndAuthors[] = [];
   if (threadFilter === 'resolved') {
     threadList = resolvedThreads;
-  }
-  else if (threadFilter === 'open') {
+  } else if (threadFilter === 'open') {
     threadList = unResolvedThreads;
-  }
-  else if (threadFilter === 'all') {
+  } else if (threadFilter === 'all') {
     threadList = allThreads as ThreadWithCommentsAndAuthors[];
-  }
-  else if (threadFilter === 'you') {
+  } else if (threadFilter === 'you') {
     // Filter the threads where there is at-least a single comment by the current user
-    threadList = unResolvedThreads.filter(unResolvedThread => unResolvedThread.comments.some(comment => comment.userId === user?.id));
+    threadList = unResolvedThreads.filter((unResolvedThread) =>
+      unResolvedThread.comments.some((comment) => comment.userId === user?.id)
+    );
   }
 
   const view = useEditorViewContext();
   // Making sure the position sort doesn't filter out comments that are not in the view
-  const inlineThreadsIds = threadSort === 'position' ? Array.from(new Set([...findTotalInlineComments(view.state.schema, view.state.doc, threads, true).threadIds, ...allThreads.map(thread => thread?.id).filter(isTruthy)])) : [];
+  const inlineThreadsIds =
+    threadSort === 'position'
+      ? Array.from(
+          new Set([
+            ...findTotalInlineComments(view.state.schema, view.state.doc, threads, true).threadIds,
+            ...allThreads.map((thread) => thread?.id).filter(isTruthy)
+          ])
+        )
+      : [];
 
   let sortedThreadList: ThreadWithCommentsAndAuthors[] = [];
   if (threadSort === 'earliest') {
-    sortedThreadList = threadList.sort(
-      (threadA, threadB) => threadA && threadB ? new Date(threadA.createdAt).getTime() - new Date(threadB.createdAt).getTime() : 0
+    sortedThreadList = threadList.sort((threadA, threadB) =>
+      threadA && threadB ? new Date(threadA.createdAt).getTime() - new Date(threadB.createdAt).getTime() : 0
     );
-  }
-  else if (threadSort === 'latest') {
-    sortedThreadList = threadList.sort(
-      (threadA, threadB) => threadA && threadB ? new Date(threadB.createdAt).getTime() - new Date(threadA.createdAt).getTime() : 0
+  } else if (threadSort === 'latest') {
+    sortedThreadList = threadList.sort((threadA, threadB) =>
+      threadA && threadB ? new Date(threadB.createdAt).getTime() - new Date(threadA.createdAt).getTime() : 0
     );
-  }
-  else {
-    const threadListSet = new Set(threadList.map(thread => thread.id));
-    const filteredThreadIds = inlineThreadsIds.filter(inlineThreadsId => threadListSet.has(inlineThreadsId));
-    sortedThreadList = filteredThreadIds.map(filteredThreadId => threads[filteredThreadId] as ThreadWithCommentsAndAuthors);
+  } else {
+    const threadListSet = new Set(threadList.map((thread) => thread.id));
+    const filteredThreadIds = inlineThreadsIds.filter((inlineThreadsId) => threadListSet.has(inlineThreadsId));
+    sortedThreadList = filteredThreadIds.map(
+      (filteredThreadId) => threads[filteredThreadId] as ThreadWithCommentsAndAuthors
+    );
   }
 
   useEffect(() => {
     // Highlight the comment id when navigation from nexus mentioned tasks list tab
-    const highlightedCommentId = (new URLSearchParams(window.location.search)).get('commentId');
-    if (highlightedCommentId) {
+    const highlightedCommentId = router.query.commentId;
+    if (typeof highlightedCommentId === 'string') {
       const highlightedComment = getCommentFromThreads(allThreads, highlightedCommentId);
       if (highlightedComment) {
         const highlightedCommentDomNode = document.getElementById(`comment.${highlightedComment.id}`);
@@ -128,7 +136,7 @@ export default function CommentsSidebar ({ inline }: BoxProps & { inline?: boole
             setCurrentPageActionDisplay('comments');
             setThreadFilter('all');
             // Remove query parameters from url
-            silentlyUpdateURL(window.location.href.split('?')[0]);
+            setUrlWithoutRerender(router.pathname, { commentId: null });
             requestAnimationFrame(() => {
               highlightedCommentDomNode.scrollIntoView({
                 behavior: 'smooth'
@@ -143,7 +151,7 @@ export default function CommentsSidebar ({ inline }: BoxProps & { inline?: boole
         }
       }
     }
-  }, [allThreads, window.location.search]);
+  }, [allThreads, router.query.commentId]);
 
   return (
     <>
@@ -165,7 +173,7 @@ export default function CommentsSidebar ({ inline }: BoxProps & { inline?: boole
       <StyledSidebar className='charm-inline-comment-sidebar'>
         {sortedThreadList.length === 0 ? (
           <NoCommentsMessage
-            icon={(
+            icon={
               <MessageOutlinedIcon
                 fontSize='large'
                 color='secondary'
@@ -174,22 +182,30 @@ export default function CommentsSidebar ({ inline }: BoxProps & { inline?: boole
                   width: '2em'
                 }}
               />
-            )}
+            }
             message={`No ${threadFilter} comments yet`}
           />
-        ) : sortedThreadList.map(resolvedThread => resolvedThread
-          && <PageThread showFindButton inline={inline} key={resolvedThread.id} threadId={resolvedThread?.id} />)}
+        ) : (
+          sortedThreadList.map(
+            (resolvedThread) =>
+              resolvedThread && (
+                <PageThread showFindButton inline={inline} key={resolvedThread.id} threadId={resolvedThread?.id} />
+              )
+          )
+        )}
       </StyledSidebar>
     </>
   );
 }
 
-export function NoCommentsMessage ({ icon, message }: { icon: ReactNode, message: string }) {
+export function NoCommentsMessage({ icon, message }: { icon: ReactNode; message: string }) {
   return (
     <EmptyThreadContainerBox>
       <Center>
-        {icon }
-        <Typography variant='subtitle1' color='secondary'>{message}</Typography>
+        {icon}
+        <Typography variant='subtitle1' color='secondary'>
+          {message}
+        </Typography>
       </Center>
     </EmptyThreadContainerBox>
   );

@@ -1,5 +1,10 @@
 import TaskOutlinedIcon from '@mui/icons-material/TaskOutlined';
-import { Alert, Card, Grid, Typography } from '@mui/material';
+import Alert from '@mui/material/Alert';
+import TableBody from '@mui/material/TableBody';
+import TableCell from '@mui/material/TableCell';
+import TableHead from '@mui/material/TableHead';
+import TableRow from '@mui/material/TableRow';
+import Typography from '@mui/material/Typography';
 import { Box } from '@mui/system';
 import { useEffect } from 'react';
 import type { KeyedMutator } from 'swr';
@@ -12,6 +17,9 @@ import { ProposalStatusChip } from 'components/proposals/components/ProposalStat
 import type { ProposalTask, ProposalTaskAction } from 'lib/proposal/getProposalTasks';
 import type { GetTasksResponse } from 'pages/api/tasks/list';
 
+import { EmptyTaskState } from './components/EmptyTaskState';
+import Table from './components/NexusTable';
+
 const ProposalActionRecord: Record<ProposalTaskAction, string> = {
   discuss: 'Discuss',
   start_discussion: 'To discuss',
@@ -21,100 +29,68 @@ const ProposalActionRecord: Record<ProposalTaskAction, string> = {
   start_review: 'To review'
 };
 
+const SMALL_TABLE_CELL_WIDTH = 150;
+
 /**
  * Page only needs to be provided for proposal type proposals
  */
-export function ProposalTasksListRow (
-  {
-    proposalTask: {
-      spaceDomain,
-      pagePath,
-      spaceName,
-      pageTitle,
-      action,
-      status
-    }
-  }: { proposalTask: ProposalTask }
-) {
+export function ProposalTasksListRow({
+  proposalTask: { spaceDomain, pagePath, spaceName, pageTitle, action, status }
+}: {
+  proposalTask: ProposalTask;
+}) {
   const proposalLink = `/${spaceDomain}/${pagePath}`;
-  const proposalLocation = spaceName;
+  const workspaceProposals = `/${spaceDomain}/proposals`;
+
   return (
-    <Box>
-      <Card sx={{ width: '100%', px: 2, py: 1, my: 2, borderLeft: 0, borderRight: 0 }} variant='outlined'>
-        <Grid justifyContent='space-between' alignItems='center' gap={1} container>
-          <Grid
-            item
-            xs={12}
-            sm={12}
-            md={3}
-            sx={{
-              overflow: 'hidden',
-              whiteSpace: 'nowrap',
-              textOverflow: 'ellipsis',
-              mr: 1,
-              alignItems: 'center',
-              display: 'flex',
-              gap: 0.5
-            }}
-            fontSize={{ sm: 16, xs: 18 }}
-          >
-            <TaskOutlinedIcon color='secondary' />
+    <TableRow>
+      <TableCell>
+        <Link
+          color='inherit'
+          href={proposalLink}
+          sx={{
+            maxWidth: {
+              xs: '130px',
+              sm: '200px',
+              md: '400px'
+            }
+          }}
+          display='flex'
+        >
+          <TaskOutlinedIcon color='secondary' />
+          <Typography variant='body1' variantMapping={{ body1: 'span' }} marginLeft='5px' noWrap>
             {pageTitle || 'Untitled'}
-          </Grid>
-          <Grid
-            item
-            xs={12}
-            sm={12}
-            md={4}
-            sx={{
-              fontSize: { xs: 14, sm: 'inherit' }
-            }}
-          >
-            <Link
-              href={proposalLink}
-              sx={{
-                '&.MuiLink-root': {
-                  color: 'inherit'
-                }
-              }}
-            >
-              {proposalLocation}
-            </Link>
-          </Grid>
-          <Grid item md={2} display='flex' justifyContent='center'>
-            <ProposalStatusChip status={status} />
-          </Grid>
-          <Grid
-            item
-            xs={12}
-            sm={3}
-            md={2}
-            justifyContent={{
-              md: 'flex-end'
-            }}
-            display='flex'
-          >
-            <Button
-              sx={{
-                minWidth: 100,
-                width: {
-                  xs: '100%',
-                  md: 100
-                },
-                textAlign: 'center'
-              }}
-              href={proposalLink}
-              disabled={!action}
-            >{action ? ProposalActionRecord[action] : 'No action'}
-            </Button>
-          </Grid>
-        </Grid>
-      </Card>
-    </Box>
+          </Typography>
+        </Link>
+      </TableCell>
+      <TableCell>
+        <Link color='inherit' href={workspaceProposals} sx={{ '& > *': { verticalAlign: 'middle' } }}>
+          <Typography variant='body1'>{spaceName}</Typography>
+        </Link>
+      </TableCell>
+      <TableCell align='center'>
+        <ProposalStatusChip status={status} />
+      </TableCell>
+      <TableCell align='center'>
+        <Button
+          sx={{
+            borderRadius: '18px',
+            width: {
+              xs: '100%',
+              md: '100px'
+            }
+          }}
+          href={proposalLink}
+          variant={action ? 'contained' : 'outlined'}
+        >
+          {action ? ProposalActionRecord[action] : 'View'}
+        </Button>
+      </TableCell>
+    </TableRow>
   );
 }
 
-export default function ProposalTasksList ({
+export default function ProposalTasksList({
   tasks,
   error,
   mutateTasks
@@ -126,21 +102,28 @@ export default function ProposalTasksList ({
   const proposals = tasks?.proposals ? [...tasks.proposals.unmarked, ...tasks.proposals.marked] : [];
 
   useEffect(() => {
-    async function main () {
+    async function main() {
       if (tasks?.proposals && tasks.proposals.unmarked.length !== 0) {
-        await charmClient.tasks.markTasks(tasks.proposals.unmarked.map(proposal => ({ id: proposal.id, type: 'proposal' })));
-        mutateTasks((_tasks) => {
-          const unmarked = _tasks?.proposals.unmarked ?? [];
-          return _tasks ? {
-            ..._tasks,
-            proposals: {
-              marked: [...unmarked, ..._tasks.proposals.marked],
-              unmarked: []
-            }
-          } : undefined;
-        }, {
-          revalidate: false
-        });
+        await charmClient.tasks.markTasks(
+          tasks.proposals.unmarked.map((proposal) => ({ id: proposal.id, type: 'proposal' }))
+        );
+        mutateTasks(
+          (_tasks) => {
+            const unmarked = _tasks?.proposals.unmarked ?? [];
+            return _tasks
+              ? {
+                  ..._tasks,
+                  proposals: {
+                    marked: [...unmarked, ..._tasks.proposals.marked],
+                    unmarked: []
+                  }
+                }
+              : undefined;
+          },
+          {
+            revalidate: false
+          }
+        );
       }
     }
     main();
@@ -149,32 +132,40 @@ export default function ProposalTasksList ({
   if (error) {
     return (
       <Box>
-        <Alert severity='error'>
-          There was an error. Please try again later!
-        </Alert>
+        <Alert severity='error'>There was an error. Please try again later!</Alert>
       </Box>
     );
-  }
-  else if (!tasks?.proposals) {
+  } else if (!tasks?.proposals) {
     return <LoadingComponent height='200px' isLoading={true} />;
   }
 
   const totalProposals = proposals.length;
 
   if (totalProposals === 0) {
-    return (
-      <Card variant='outlined'>
-        <Box p={3} textAlign='center'>
-          <TaskOutlinedIcon />
-          <Typography color='secondary'>You don't have any proposals right now</Typography>
-        </Box>
-      </Card>
-    );
+    return <EmptyTaskState taskType='proposals' />;
   }
 
   return (
-    <>
-      {proposals.map(proposal => <ProposalTasksListRow key={proposal.id} proposalTask={proposal} />)}
-    </>
+    <Box overflow='auto'>
+      <Table size='medium' aria-label='Nexus proposals table'>
+        <TableHead>
+          <TableRow>
+            <TableCell width={400}>Proposal Name</TableCell>
+            <TableCell>Workspace</TableCell>
+            <TableCell align='center' width={SMALL_TABLE_CELL_WIDTH}>
+              Status
+            </TableCell>
+            <TableCell align='center' width={SMALL_TABLE_CELL_WIDTH}>
+              Action
+            </TableCell>
+          </TableRow>
+        </TableHead>
+        <TableBody>
+          {proposals.map((proposal) => (
+            <ProposalTasksListRow key={proposal.id} proposalTask={proposal} />
+          ))}
+        </TableBody>
+      </Table>
+    </Box>
   );
 }

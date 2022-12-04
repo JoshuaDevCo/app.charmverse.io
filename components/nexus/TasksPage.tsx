@@ -1,23 +1,24 @@
-
 import { useTheme } from '@emotion/react';
 import styled from '@emotion/styled';
 import ForumIcon from '@mui/icons-material/Forum';
 import HowToVoteIcon from '@mui/icons-material/HowToVote';
 import KeyIcon from '@mui/icons-material/Key';
+import BountyIcon from '@mui/icons-material/RequestPageOutlined';
 import TaskOutlinedIcon from '@mui/icons-material/TaskOutlined';
 import { Badge, Box, Divider, Grid, Tab, Tabs, Typography } from '@mui/material';
 import { useRouter } from 'next/router';
 import { useState } from 'react';
 
 import { useUser } from 'hooks/useUser';
-import { silentlyUpdateURL } from 'lib/browser';
+import { setUrlWithoutRerender } from 'lib/utilities/browser';
 
+import BountyTasksList from './BountyTasksList';
 import NexusPageTitle from './components/NexusPageTitle';
 import NotifyMeButton from './components/NotifyMeButton';
 import SnoozeButton from './components/SnoozeButton';
-import GnosisTasksList from './GnosisTasksList';
+import DiscussionTasksList from './DiscussionTasksList';
+import { GnosisTasksList } from './GnosisTasksList';
 import useTasks from './hooks/useTasks';
-import MentionedTasksList from './MentionedTasksList';
 import ProposalTasksList from './ProposalTasksList';
 import TasksPageHeader from './TasksPageHeader';
 import { VoteTasksList } from './VoteTasksList';
@@ -51,15 +52,15 @@ const StyledTypography = styled(Typography)`
 
 const TASK_TABS = [
   { icon: <KeyIcon />, label: 'Multisig', type: 'multisig' },
-  // { icon: <BountyIcon />, label: 'Bounty', type: 'bounty' },
+  { icon: <BountyIcon />, label: 'Bounty', type: 'bounty' },
   { icon: <HowToVoteIcon />, label: 'Poll', type: 'vote' },
   { icon: <ForumIcon />, label: 'Discussion', type: 'discussion' },
   { icon: <TaskOutlinedIcon />, label: 'Proposal', type: 'proposal' }
 ] as const;
 
-type TaskType = (typeof TASK_TABS)[number]['type'];
+type TaskType = typeof TASK_TABS[number]['type'];
 
-export default function TasksPage () {
+export default function TasksPage() {
   const router = useRouter();
   const { user } = useUser();
   const [currentTaskType, setCurrentTaskType] = useState<TaskType>((router.query?.task ?? 'multisig') as TaskType);
@@ -67,15 +68,19 @@ export default function TasksPage () {
   const theme = useTheme();
 
   const userNotificationState = user?.notificationState;
-  const hasSnoozedNotifications = userNotificationState
-    && userNotificationState.snoozedUntil
-    && new Date(userNotificationState.snoozedUntil) > new Date();
+  const hasSnoozedNotifications =
+    userNotificationState &&
+    userNotificationState.snoozedUntil &&
+    new Date(userNotificationState.snoozedUntil) > new Date();
 
-  const notificationCount: Record<(typeof TASK_TABS)[number]['type'], number> = {
-    multisig: (gnosisTasks && !hasSnoozedNotifications) ? gnosisTasks.length : 0,
-    vote: tasks ? tasks.votes.length : 0,
-    discussion: tasks ? tasks.mentioned.unmarked.length : 0,
-    proposal: tasks ? tasks.proposals.unmarked.length : 0
+  const unvoted = tasks?.votes.filter((vote) => !vote.userChoice && new Date() < new Date(vote.deadline));
+
+  const notificationCount: Record<typeof TASK_TABS[number]['type'], number> = {
+    multisig: gnosisTasks && !hasSnoozedNotifications ? gnosisTasks.length : 0,
+    vote: unvoted ? unvoted.length : 0,
+    discussion: tasks ? tasks.discussions.unmarked.length : 0,
+    proposal: tasks ? tasks.proposals.unmarked.length : 0,
+    bounty: tasks ? tasks.bounties?.unmarked.length : 0
   };
 
   return (
@@ -85,15 +90,18 @@ export default function TasksPage () {
       <Grid container spacing={{ xs: 1, sm: 3 }} sx={{ pt: 6, pb: 2 }}>
         <Grid item xs={12} sm={6}>
           <Box>
-            <StyledTypography>
-              My tasks
-            </StyledTypography>
+            <StyledTypography>My Tasks</StyledTypography>
           </Box>
         </Grid>
         <Grid item xs={12} sm={6}>
-          <Box display='flex' alignItems='center' justifyContent={{ sm: 'flex-end', xs: 'flex-start' }} gap={{ sm: 2, xs: 1 }}>
+          <Box
+            display='flex'
+            alignItems='center'
+            justifyContent={{ sm: 'flex-end', xs: 'flex-start' }}
+            gap={{ sm: 2, xs: 1 }}
+          >
             <NotifyMeButton />
-            {currentTaskType === 'multisig' ? <SnoozeButton /> : null }
+            {currentTaskType === 'multisig' ? <SnoozeButton /> : null}
           </Box>
         </Grid>
       </Grid>
@@ -101,9 +109,9 @@ export default function TasksPage () {
       <Tabs
         sx={tabStyles}
         indicatorColor='primary'
-        value={TASK_TABS.findIndex(taskTab => taskTab.type === currentTaskType)}
+        value={TASK_TABS.findIndex((taskTab) => taskTab.type === currentTaskType)}
       >
-        {TASK_TABS.map(task => (
+        {TASK_TABS.map((task) => (
           <Tab
             component='div'
             disableRipple
@@ -133,7 +141,7 @@ export default function TasksPage () {
                 }
               }
             }}
-            label={(
+            label={
               <Badge
                 sx={{
                   '& .MuiBadge-badge': {
@@ -153,26 +161,23 @@ export default function TasksPage () {
               >
                 {task.label}
               </Badge>
-            )}
+            }
             onClick={() => {
-              silentlyUpdateURL(`${window.location.origin}/nexus?task=${task.type}`);
+              setUrlWithoutRerender(router.pathname, { task: task.type });
               setCurrentTaskType(task.type);
             }}
           />
         ))}
       </Tabs>
-      {
-        currentTaskType === 'multisig' && <GnosisTasksList error={gnosisTasksServerError} mutateTasks={mutateGnosisTasks} tasks={gnosisTasks} />
-      }
-      {
-        currentTaskType === 'discussion' && <MentionedTasksList mutateTasks={mutateTasks} error={error} tasks={tasks} />
-      }
-      {
-        currentTaskType === 'vote' && <VoteTasksList mutateTasks={mutateTasks} error={error} tasks={tasks} />
-      }
-      {
-        currentTaskType === 'proposal' && <ProposalTasksList error={error} tasks={tasks} mutateTasks={mutateTasks} />
-      }
+      {currentTaskType === 'multisig' && (
+        <GnosisTasksList error={gnosisTasksServerError} mutateTasks={mutateGnosisTasks} tasks={gnosisTasks} />
+      )}
+      {currentTaskType === 'discussion' && (
+        <DiscussionTasksList mutateTasks={mutateTasks} error={error} tasks={tasks} />
+      )}
+      {currentTaskType === 'vote' && <VoteTasksList mutateTasks={mutateTasks} error={error} tasks={tasks} />}
+      {currentTaskType === 'proposal' && <ProposalTasksList error={error} tasks={tasks} mutateTasks={mutateTasks} />}
+      {currentTaskType === 'bounty' && <BountyTasksList error={error} tasks={tasks} mutateTasks={mutateTasks} />}
     </>
   );
 }

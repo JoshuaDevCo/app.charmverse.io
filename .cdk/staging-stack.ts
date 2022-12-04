@@ -1,4 +1,4 @@
-import { CfnOutput, Stack, StackProps } from 'aws-cdk-lib';
+import { CfnOutput, Stack, StackProps, CfnTag } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import * as s3assets from 'aws-cdk-lib/aws-s3-assets';
 import * as elasticbeanstalk from 'aws-cdk-lib/aws-elasticbeanstalk';
@@ -17,6 +17,8 @@ export class CdkDeployStack extends Stack {
     });
     // Create a ElasticBeanStalk app. - must be 40 characters or less
     const appName = sanitizeAppName('stg-charmverse-' + process.env.STAGE);
+
+    const deploymentDomain = `${process.env.STAGE || ''}.${domain}`;
 
     const ebApp = new elasticbeanstalk.CfnApplication(this, 'Application', {
       applicationName: appName,
@@ -87,6 +89,18 @@ export class CdkDeployStack extends Stack {
         optionName: 'InstanceTypes',
         value: 't3.micro',
       },
+      {
+        namespace: 'aws:elasticbeanstalk:application:environment',
+        optionName: 'DOMAIN',
+        value: 'https://' + deploymentDomain,
+      }
+    ];
+
+    const resourceTags: CfnTag[] = [
+      {
+        key: 'env',
+        value: 'stg'
+      }
     ];
 
     // Create an Elastic Beanstalk environment to run the application
@@ -95,14 +109,13 @@ export class CdkDeployStack extends Stack {
       applicationName: ebApp.applicationName || appName,
       solutionStackName: '64bit Amazon Linux 2 v3.4.13 running Docker',
       optionSettings: optionSettingProperties,
+      tags: resourceTags,
       versionLabel: appVersionProps.ref,
     });
 
     const zone = route53.HostedZone.fromLookup(this, 'HostedZone', {
       domainName: domain
     });
-
-    const deploymentDomain = `${process.env.STAGE || ''}.${domain}`;
 
     new route53.ARecord(this, 'ARecord', {
       zone,

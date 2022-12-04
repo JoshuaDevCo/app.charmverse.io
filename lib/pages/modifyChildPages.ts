@@ -2,18 +2,26 @@ import type { Prisma } from '@prisma/client';
 
 import { prisma } from 'db';
 
+import type { TargetPageTreeWithFlatChildren } from './server';
 import { resolvePageTree } from './server';
 
-export type ChildModificationAction = 'delete' | 'restore' | 'archive'
+export type ChildModificationAction = 'delete' | 'restore' | 'archive';
 
-export async function modifyChildPages (parentId: string, userId: string, action: ChildModificationAction) {
-  const { flatChildren } = await resolvePageTree({
-    pageId: parentId,
-    flattenChildren: true,
-    includeDeletedPages: true
-  });
+export async function modifyChildPages(
+  parentId: string,
+  userId: string,
+  action: ChildModificationAction,
+  resolvedPageTree?: TargetPageTreeWithFlatChildren
+) {
+  const { flatChildren } =
+    resolvedPageTree ??
+    (await resolvePageTree({
+      pageId: parentId,
+      flattenChildren: true,
+      includeDeletedPages: true
+    }));
 
-  const modifiedChildPageIds: string[] = [parentId, ...flatChildren.map(p => p.id)];
+  const modifiedChildPageIds: string[] = [parentId, ...flatChildren.map((p) => p.id)];
 
   if (action === 'delete') {
     // Only top level page can be proposal page
@@ -43,24 +51,24 @@ export async function modifyChildPages (parentId: string, userId: string, action
       }),
       prisma.block.deleteMany({
         where: {
-          OR: [{
-            id: {
-              in: modifiedChildPageIds
-            },
-            parentId: {
-              in: modifiedChildPageIds
+          OR: [
+            {
+              id: {
+                in: modifiedChildPageIds
+              },
+              parentId: {
+                in: modifiedChildPageIds
+              }
             }
-          }]
+          ]
         }
       })
     ]);
-  }
-  else {
+  } else {
     const data: Prisma.PageUncheckedUpdateManyInput = {};
     if (action === 'restore') {
       data.deletedAt = null;
-    }
-    else {
+    } else {
       data.deletedAt = new Date();
     }
     data.updatedAt = new Date();

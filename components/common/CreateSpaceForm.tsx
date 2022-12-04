@@ -5,7 +5,7 @@ import Alert from '@mui/material/Alert';
 import Divider from '@mui/material/Divider';
 import Grid from '@mui/material/Grid';
 import TextField from '@mui/material/TextField';
-import type { Prisma } from '@prisma/client';
+import type { Prisma, Space } from '@prisma/client';
 import type { ChangeEvent } from 'react';
 import { useState } from 'react';
 import { useForm } from 'react-hook-form';
@@ -16,40 +16,40 @@ import FieldLabel from 'components/common/form/FieldLabel';
 import { DialogTitle } from 'components/common/Modal';
 import PrimaryButton from 'components/common/PrimaryButton';
 import Avatar from 'components/settings/workspace/LargeAvatar';
+import { useOnboarding } from 'hooks/useOnboarding';
 import { useUser } from 'hooks/useUser';
 import log from 'lib/log';
-import { DOMAIN_BLACKLIST } from 'lib/spaces';
+import { getSpaceDomainFromName } from 'lib/spaces/utils';
+import { domainSchema } from 'lib/spaces/validateDomainName';
 import randomName from 'lib/utilities/randomName';
 
 export const schema = yup.object({
   id: yup.string(),
-  domain: yup.string().ensure().trim().lowercase()
-    .min(3, 'Domain must be at least 3 characters')
-    .matches(/^[0-9a-z-]*$/, 'Domain must be only lowercase hyphens, letters, and numbers')
-    .notOneOf(DOMAIN_BLACKLIST, 'Domain is not allowed')
-    .required('Domain is required')
-    .test('domain-exists', 'Domain already exists', async function checkDomain (domain) {
-      const { ok } = await charmClient.checkDomain({ domain, spaceId: this.parent.id });
-      return !ok;
-    }),
-  name: yup.string().ensure().trim()
-    .min(3, 'Name must be at least 3 characters')
-    .required('Name is required'),
+  domain: domainSchema.test('domain-exists', 'Domain already exists', async function checkDomain(domain) {
+    const { ok } = await charmClient.checkDomain({ domain, spaceId: this.parent.id });
+    return !ok;
+  }),
+  name: yup.string().ensure().trim().min(3, 'Name must be at least 3 characters').required('Name is required'),
   spaceImage: yup.string().nullable(true)
 });
 
 export type FormValues = yup.InferType<typeof schema>;
 
 interface Props {
-  defaultValues?: { name: string, domain: string };
+  defaultValues?: { name: string; domain: string };
   onCancel?: () => void;
-  onSubmit: (values: Prisma.SpaceCreateInput) => void;
+  onSubmit: (values: Prisma.SpaceCreateInput) => Promise<Space | null>;
   submitText?: string;
   isSubmitting: boolean;
 }
 
-export default function WorkspaceSettings ({ defaultValues, onSubmit: _onSubmit, onCancel, submitText, isSubmitting }: Props) {
-
+export default function WorkspaceSettings({
+  defaultValues,
+  onSubmit: _onSubmit,
+  onCancel,
+  submitText,
+  isSubmitting
+}: Props) {
   const { user } = useUser();
   const [saveError, setSaveError] = useState<any | null>(null);
   const {
@@ -62,15 +62,16 @@ export default function WorkspaceSettings ({ defaultValues, onSubmit: _onSubmit,
     defaultValues: defaultValues || getDefaultName(),
     resolver: yupResolver(schema)
   });
+  const { showOnboarding } = useOnboarding();
 
   const watchName = watch('name');
   const watchDomain = watch('domain');
   const watchSpaceImage = watch('spaceImage');
 
-  function onSubmit (values: FormValues) {
+  async function onSubmit(values: FormValues) {
     try {
       setSaveError(null);
-      _onSubmit({
+      const space = await _onSubmit({
         author: {
           connect: {
             id: user!.id
@@ -80,33 +81,36 @@ export default function WorkspaceSettings ({ defaultValues, onSubmit: _onSubmit,
         updatedAt: new Date(),
         updatedBy: user!.id,
         spaceRoles: {
-          create: [{
-            isAdmin: true,
-            user: {
-              connect: {
-                id: user!.id
+          create: [
+            {
+              isAdmin: true,
+              user: {
+                connect: {
+                  id: user!.id
+                }
               }
             }
-          }]
+          ]
         },
         ...values
       });
-    }
-    catch (err) {
+      if (space) {
+        showOnboarding(space.id);
+      }
+    } catch (err) {
       log.error('Error creating space', err);
       setSaveError((err as Error).message || err);
     }
   }
 
-  function onChangeName (event: ChangeEvent<HTMLInputElement>) {
+  function onChangeName(event: ChangeEvent<HTMLInputElement>) {
     const name = event.target.value;
     if (!touchedFields.domain) {
-      setValue('domain', getDomainFromName(name));
+      setValue('domain', getSpaceDomainFromName(name));
     }
-
   }
 
-  function randomizeName () {
+  function randomizeName() {
     const { name, domain } = getDefaultName();
     setValue('name', name);
     setValue('domain', domain);
@@ -138,17 +142,21 @@ export default function WorkspaceSettings ({ defaultValues, onSubmit: _onSubmit,
             fullWidth
             error={!!errors.name}
             helperText={errors.name?.message}
-            InputProps={defaultValues ? {} : {
-              endAdornment: (
-                <InputAdornment position='end'>
-                  <Tooltip arrow placement='top' title='Regenerate random name'>
-                    <IconButton size='small' onClick={randomizeName}>
-                      <RefreshIcon fontSize='small' />
-                    </IconButton>
-                  </Tooltip>
-                </InputAdornment>
-              )
-            }}
+            InputProps={
+              defaultValues
+                ? {}
+                : {
+                    endAdornment: (
+                      <InputAdornment position='end'>
+                        <Tooltip arrow placement='top' title='Regenerate random name'>
+                          <IconButton size='small' onClick={randomizeName}>
+                            <RefreshIcon fontSize='small' />
+                          </IconButton>
+                        </Tooltip>
+                      </InputAdornment>
+                    )
+                  }
+            }
           />
         </Grid>
         <Grid item>
@@ -164,28 +172,26 @@ export default function WorkspaceSettings ({ defaultValues, onSubmit: _onSubmit,
           />
         </Grid>
         <Grid item sx={{ display: 'flex', justifyContent: 'center' }}>
-          <PrimaryButton disabled={!watchName || !watchDomain} type='submit' data-test='create-workspace' loading={isSubmitting}>
+          <PrimaryButton
+            disabled={!watchName || !watchDomain}
+            type='submit'
+            data-test='create-workspace'
+            loading={isSubmitting}
+          >
             {submitText || 'Create Workspace'}
           </PrimaryButton>
         </Grid>
         {saveError && (
           <Grid item>
-            <Alert severity='error'>
-              {saveError}
-            </Alert>
+            <Alert severity='error'>{saveError}</Alert>
           </Grid>
         )}
       </Grid>
     </form>
   );
-
 }
 
-export function getDomainFromName (name: string) {
-  return name.replace(/[\p{P}\p{S}]/gu, '').replace(/\s/g, '-').toLowerCase();
-}
-
-function getDefaultName (): { name: string, domain: string } {
+function getDefaultName(): { name: string; domain: string } {
   const name = randomName();
   return {
     name,
